@@ -3,9 +3,15 @@ package com.example.camera
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.os.Handler
+import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 
 class FaceAccessibilityService : AccessibilityService() {
+
+    private var currentStroke: GestureDescription.StrokeDescription? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private var isPressing = false
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
@@ -18,6 +24,54 @@ class FaceAccessibilityService : AccessibilityService() {
         dispatchGesture(gesture, null, null)
     }
 
+    // 开始持续按压
+    fun startContinuousPress(x: Float, y: Float) {
+        if (isPressing) return
+        isPressing = true
+        
+        val path = Path().apply { moveTo(x, y) }
+        // 初始按压
+        currentStroke = GestureDescription.StrokeDescription(path, 0, 200, true)
+        val gesture = GestureDescription.Builder().addStroke(currentStroke!!).build()
+        dispatchGesture(gesture, object : GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                if (isPressing) {
+                    continuePress(x, y)
+                }
+            }
+        }, null)
+    }
+
+    // 续期按压
+    private fun continuePress(x: Float, y: Float) {
+        if (!isPressing) return
+        
+        val path = Path().apply { moveTo(x, y) }
+        currentStroke = currentStroke?.continueStroke(path, 0, 200, true)
+        currentStroke?.let {
+            val gesture = GestureDescription.Builder().addStroke(it).build()
+            dispatchGesture(gesture, object : GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) {
+                    handler.postDelayed({
+                        if (isPressing) continuePress(x, y)
+                    }, 10)
+                }
+            }, null)
+        }
+    }
+
+    // 停止按压
+    fun stopContinuousPress(x: Float, y: Float) {
+        isPressing = false
+        currentStroke?.let {
+            val path = Path().apply { moveTo(x, y) }
+            val lastStroke = it.continueStroke(path, 0, 100, false)
+            val gesture = GestureDescription.Builder().addStroke(lastStroke).build()
+            dispatchGesture(gesture, null, null)
+            currentStroke = null
+        }
+    }
+
     fun performSwipeAction(startX: Float, startY: Float, endX: Float, endY: Float) {
         val path = Path().apply {
             moveTo(startX, startY)
@@ -26,19 +80,6 @@ class FaceAccessibilityService : AccessibilityService() {
         val stroke = GestureDescription.StrokeDescription(path, 0, 300)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
         dispatchGesture(gesture, null, null)
-    }
-
-    fun performSwipeUpAction() {
-        performSwipeAction(500f, 1500f, 500f, 500f)
-    }
-
-    // 新增：模拟从右向左滑动 (模拟翻页或移除)
-    fun performSwipeLeftAction() {
-        performSwipeAction(900f, 1000f, 100f, 1000f)
-    }
-
-    fun triggerGlobalAction(action: Int) {
-        performGlobalAction(action)
     }
 
     companion object {

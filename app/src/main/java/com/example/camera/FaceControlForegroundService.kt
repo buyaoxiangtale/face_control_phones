@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.IBinder
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -30,7 +31,7 @@ class FaceControlForegroundService : LifecycleService() {
     private fun createNotificationChannel() {
         val channelId = "face_control_channel"
         val channelName = "Face Control Service"
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW)
         manager.createNotificationChannel(channel)
     }
@@ -73,21 +74,61 @@ class FaceControlForegroundService : LifecycleService() {
 
     private fun handleFaceAction(action: FaceAnalyzer.FaceAction) {
         val service = FaceAccessibilityService.instance ?: return
+        val isPortrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+
+        if (isPortrait) {
+            handlePortraitMode(action, service)
+        } else {
+            handleLandscapeMode(action, service)
+        }
+    }
+
+    private fun handlePortraitMode(action: FaceAnalyzer.FaceAction, service: FaceAccessibilityService) {
         when (action) {
             FaceAnalyzer.FaceAction.DOUBLE_BLINK -> {
-                // 双眨眼 -> 向上滑动
+                // 原始方案：向上滑动
                 service.performSwipeAction(500f, 1500f, 500f, 500f)
             }
-            FaceAnalyzer.FaceAction.SHAKE -> {
-                // 摇头 -> 向左滑动 (从右向左)
+            FaceAnalyzer.FaceAction.SHAKE_LEFT -> {
+                // 左扭头 -> 向左滑动
                 service.performSwipeAction(900f, 1000f, 100f, 1000f)
             }
-            FaceAnalyzer.FaceAction.BLINK -> {
-                // 单次眨眼，暂不执行大动作，可作为预留
+            FaceAnalyzer.FaceAction.SHAKE_RIGHT -> {
+                // 右扭头 -> 向右滑动
+                service.performSwipeAction(100f, 1000f, 900f, 1000f)
+            }
+            FaceAnalyzer.FaceAction.MOUTH_OPEN -> {
+                service.startContinuousPress(500f, 1000f)
+            }
+            FaceAnalyzer.FaceAction.MOUTH_CLOSE -> {
+                service.stopContinuousPress(500f, 1000f)
             }
             FaceAnalyzer.FaceAction.NOD -> {
                 service.performClickAction(500f, 1000f)
             }
+            else -> {}
+        }
+    }
+
+    private fun handleLandscapeMode(action: FaceAnalyzer.FaceAction, service: FaceAccessibilityService) {
+        // 横屏方案 (假设屏幕宽 2400, 高 1080)
+        when (action) {
+            FaceAnalyzer.FaceAction.DOUBLE_BLINK -> {
+                // 双眨眼 -> 从左向右拖动 (快进)
+                service.performSwipeAction(500f, 540f, 1900f, 540f)
+            }
+            FaceAnalyzer.FaceAction.NOD -> {
+                // 点头 -> 从右向左拖动 (倒退)
+                service.performSwipeAction(1900f, 540f, 500f, 540f)
+            }
+            FaceAnalyzer.FaceAction.MOUTH_OPEN -> {
+                // 张嘴 -> 持续长按屏幕中心
+                service.startContinuousPress(1200f, 540f)
+            }
+            FaceAnalyzer.FaceAction.MOUTH_CLOSE -> {
+                service.stopContinuousPress(1200f, 540f)
+            }
+            else -> {}
         }
     }
 
